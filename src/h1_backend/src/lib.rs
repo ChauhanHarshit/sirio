@@ -1,7 +1,9 @@
 use ic_cdk::api;
 use ic_cdk_macros::{query, update};
 use candid::{CandidType, Deserialize};
+use ic_cdk::api::management_canister::main::raw_rand;
 use ic_cdk::export_candid;
+
 
 #[derive(CandidType, Deserialize)]
 struct InputData {
@@ -9,34 +11,19 @@ struct InputData {
     borrowed: f64,
 }
 
-// A simple random number generator using a linear congruential generator (LCG)
-struct LCG {
-    seed: u64,
-}
-
-impl LCG {
-    fn new(seed: u64) -> Self {
-        LCG { seed }
-    }
-
-    fn next(&mut self) -> u64 {
-        // LCG parameters (these are common parameters, you can adjust them)
-        self.seed = (self.seed.wrapping_mul(6364136223846793005).wrapping_add(1)) % (1 << 48);
-        self.seed
-    }
-}
-
 #[update]
-fn store_data(input: InputData) -> Result<u64, String> {
-    // Store the input data in variables
+async fn store_data(input: InputData) -> Result<u64, String> {
     let stored_collateral = input.collateral;
     let stored_borrowed = input.borrowed;
 
-    // Use LCG to generate a random value
-    let mut rng = LCG::new(api::time());
-    let random_value = rng.next(); // Generate the random value
+    let (random_bytes,) = raw_rand().await.map_err(|err| format!("Failed to generate random number: {:?}", err))?;
 
-    // Log the stored values and generated random value
+    let random_value = if random_bytes.len() >= 8 {
+        u64::from_le_bytes(random_bytes[..8].try_into().unwrap())
+    } else {
+        return Err("Not enough random bytes".to_string());
+    };
+
     ic_cdk::print(&format!(
         "Stored collateral: {}, Stored borrowed: {}, Random value: {}",
         stored_collateral, stored_borrowed, random_value
